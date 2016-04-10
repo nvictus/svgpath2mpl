@@ -1,0 +1,25 @@
+# OS-generated files
+.DS_Store
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# general things to ignore
+.ipynb_checkpoints/
+__pycache__/
+*.py[cod]
+*.so
+*~
+tmp/
+
+# setup and build
+build/
+dist/
+*.egg-info/
+MANIFEST
+docs/_*
+
+# from testing utilities
+.tox
+.cache
