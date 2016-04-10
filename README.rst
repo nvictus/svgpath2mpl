@@ -22,7 +22,7 @@ Resources
 ---------
 See the `SVG Specification <https://www.w3.org/TR/SVG/paths.html>`_.
 
-See the matplotlib path `tutorial <http://matplotlib.org/users/path_tutorial.html>`_ and `API docs <https://www.w3.org/TR/SVG/paths.html>`_.
+See the matplotlib path `tutorial <http://matplotlib.org/users/path_tutorial.html>`_ and `API docs <http://matplotlib.org/1.2.1/api/path_api.html>`_.
 
 
 License
