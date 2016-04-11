@@ -4,10 +4,10 @@ SVGPATH2MPL
 ~~~~~~~~~~~
 Parse SVG path data strings into matplotlib `Path` objects.
 
-A path in SVG is defined by a 'path' element which contains a d="(path data)"
-attribute, where the `d` attribute contains the moveto, line, curve (both cubic
-and quadratic Béziers), arc and closepath instructions. See the SVG Path 
-specification at <https://www.w3.org/TR/SVG/paths.html>.
+A path in SVG is defined by a 'path' element which contains a 
+``d="(path data)"`` attribute that contains moveto, line, curve (both 
+cubic and quadratic Béziers), arc and closepath instructions. See the SVG
+Path specification at <https://www.w3.org/TR/SVG/paths.html>.
 
 :copyright: (c) 2016, Nezar Abdennur.
 :license: MIT.
@@ -36,7 +36,8 @@ COMMANDS = {
     'T' : (Path.CURVE3,)*2,  # shorthand for smooth quadratic bezier
     'C' : (Path.CURVE4,)*3,  # cubic bezier
     'S' : (Path.CURVE4,)*3,  # shorthand for smooth cubic bezier 
-    'Z' : (Path.CLOSEPOLY,)  # closepath
+    'Z' : (Path.CLOSEPOLY,), # closepath
+    'A' : None               # arc
 }
 
 
@@ -138,10 +139,9 @@ class EndpointArc(patches.Arc):
 
         
 def _tokenize_path(d):
-    for command, values in COMMAND_RE.findall(d):
-        values = [float(v) for v in FLOAT_RE.findall(values)]
-        is_relative = True if command.islower() else False
-        yield command.upper(), is_relative, values
+    for command, args in COMMAND_RE.findall(d):
+        values = [float(v) for v in FLOAT_RE.findall(args)]
+        yield command, values
 
     
 def parse_path(d):
@@ -162,12 +162,18 @@ def parse_path(d):
     all_verts = []
     all_codes = []
     current_point = np.array([0., 0.])
+    last_verts = None
+    last_command = None
+    start_point = current_point
     
-    for command, is_relative, values in _tokenize_path(d):
+    for command, values in _tokenize_path(d):
+        
+        is_relative = command.islower()
+        command = command.upper()
         
         if command == 'Z':
             # Close path. A point is required but ignored.
-            verts = np.array([0., 0.])
+            verts = np.array(start_point)
             codes = COMMANDS[command]
             
         elif command == 'H':
@@ -185,8 +191,8 @@ def parse_path(d):
             # the control point is the "reflection" of the second control point
             # in the previous segment.
             control_point = np.array([0., 0.])
-            if all_codes[-1] == Path.CURVE3:
-                x1, y1 = all_verts[-2]
+            if last_command in ('Q', 'T'):
+                x1, y1 = last_verts[-2]
                 x2, y2 = current_point
                 dx, dy = x2 - x1, y2 - y1
                 control_point += [dx, dy]
@@ -198,8 +204,8 @@ def parse_path(d):
             # the control point is the "reflection" of the third control point
             # in the previous segment.
             control_point = np.array([0., 0.])
-            if all_codes[-1] == Path.CURVE4:
-                x1, y1 = all_verts[-3]
+            if last_command in ('C', 'S'):
+                x1, y1 = last_verts[-3]
                 x2, y2 = current_point
                 dx, dy = x2 - x1, y2 - y1
                 control_point += [dx, dy]
@@ -209,8 +215,8 @@ def parse_path(d):
         elif command == 'A':
             # Elliptical arc using endpoint parameterization.
             x1, y1 = 0., 0.
-            rx, ry, phi, flarge, fsweep, x2, y2 = values
-            arc = EndpointArc((x1, y1), (rx, ry), phi, flarge, fsweep, (x2, y2))
+            rx, ry, phi, large, sweep, x2, y2 = values
+            arc = EndpointArc((x1, y1), (rx, ry), phi, large, sweep, (x2, y2))
             arcpath = arc.get_path()
             # Get the right vertex coordinates
             verts = arc.get_patch_transform().transform(arcpath.vertices)
@@ -229,8 +235,10 @@ def parse_path(d):
         if is_relative: 
             verts += current_point
         
+        last_verts = verts
+        last_command = command
+        current_point = verts[-1]
         all_verts.extend(verts.tolist())
         all_codes.extend(codes)
-        current_point = all_verts[-1]
     
-    return Path(np.array(all_verts), np.array(all_codes))
+    return Path(all_verts, all_codes)
