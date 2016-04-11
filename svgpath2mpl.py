@@ -72,9 +72,6 @@ class EndpointArc(patches.Arc):
 
     """
     def __init__(self, start, radius, angle, large, sweep, end, **kwargs):
-        """
-
-        """
         x1, y1 = start
         rx, ry = radius
         x2, y2 = end
@@ -86,7 +83,7 @@ class EndpointArc(patches.Arc):
         # Handle out-of-range parameters
         # http://www.w3.org/TR/SVG/implnote.html#ArcOutOfRangeParameters
         if rx == 0 or ry == 0:
-            return Path(np.array([x2, y2]), np.array([Path.MOVETO]))
+            return Path([[x2, y2]], [Path.MOVETO])
         if rx < 0: rx = abs(rx)
         if ry < 0: ry = abs(ry)
         angle = angle % 360
