@@ -32,4 +32,4 @@ See the matplotlib path `tutorial <http://matplotlib.org/users/path_tutorial.htm
 License
 -------
 
-MIT
+BSD (New).

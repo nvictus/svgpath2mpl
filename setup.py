@@ -48,7 +48,7 @@ setup(
     author='Nezar Abdennur',
     author_email='nabdennur@gmail.com',
     version=get_version(),
-    license='MIT',
+    license='BSD',
     description='SVG path parser for matplotlib',
     long_description=get_long_description(),
     keywords=['svg', 'path', 'matplotlib', 'plotting', 'visualization'],
