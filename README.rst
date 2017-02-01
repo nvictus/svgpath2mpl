@@ -8,6 +8,10 @@ Parse SVG paths into matplotlib ``Path`` objects for plotting.
 
 A path in SVG is defined by a 'path' element which contains a ``d="(path data)"`` attribute that contains moveto, line, curve (both cubic and quadratic Béziers), arc and closepath instructions. Matplotlib actually supports all of these instructions natively but doesn't provide a parser or fully compatible API.
 
+.. image:: http://i.imgur.com/NcZVznQ.png
+    :align: center
+    :width: 150px
+
 Based on:
 
 1. `svg_parse <https://github.com/rougier/LinuxMag-HS-2014/blob/master/matplotlib/firefox.py>`_ for matplotlib by Nicolas P. Rougier (BSD license).
