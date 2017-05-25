@@ -49,7 +49,7 @@ PARAMS = {
     'C' : 6, # cubic bezier
     'S' : 6, # shorthand for smooth cubic bezier
     'Z' : 0, # closepath
-    'A' : 0  # arc
+    'A' : 7  # arc
 }
 
 class EndpointArc(patches.Arc):
