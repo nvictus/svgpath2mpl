@@ -4,8 +4,8 @@ SVGPATH2MPL
 ~~~~~~~~~~~
 Parse SVG path data strings into matplotlib `Path` objects.
 
-A path in SVG is defined by a 'path' element which contains a 
-``d="(path data)"`` attribute that contains moveto, line, curve (both 
+A path in SVG is defined by a 'path' element which contains a
+``d="(path data)"`` attribute that contains moveto, line, curve (both
 cubic and quadratic Béziers), arc and closepath instructions. See the SVG
 Path specification at <https://www.w3.org/TR/SVG/paths.html>.
 
@@ -27,7 +27,7 @@ __all__ = ['parse_path', 'EndpointArc']
 
 COMMAND_RE = re.compile(r"([MLHVCSQTAZ])([^MLHVCSQTAZ]*)", re.IGNORECASE)
 FLOAT_RE = re.compile(r"[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?")
-COMMANDS = { 
+COMMANDS = {
     'M' : (Path.MOVETO,),    # moveto
     'L' : (Path.LINETO,),    # line
     'H' : (Path.LINETO,),    # shorthand for horizontal line
@@ -35,11 +35,22 @@ COMMANDS = {
     'Q' : (Path.CURVE3,)*2,  # quadratic bezier
     'T' : (Path.CURVE3,)*2,  # shorthand for smooth quadratic bezier
     'C' : (Path.CURVE4,)*3,  # cubic bezier
-    'S' : (Path.CURVE4,)*3,  # shorthand for smooth cubic bezier 
+    'S' : (Path.CURVE4,)*3,  # shorthand for smooth cubic bezier
     'Z' : (Path.CLOSEPOLY,), # closepath
     'A' : None               # arc
 }
-
+PARAMS = {
+    'M' : 2, # moveto
+    'L' : 2, # line
+    'H' : 1, # shorthand for horizontal line
+    'V' : 1, # shorthand for vertical line
+    'Q' : 4, # quadratic bezier
+    'T' : 4, # shorthand for smooth quadratic bezier
+    'C' : 6, # cubic bezier
+    'S' : 6, # shorthand for smooth cubic bezier
+    'Z' : 0, # closepath
+    'A' : 7  # arc
+}
 
 class EndpointArc(patches.Arc):
     """
@@ -102,7 +113,7 @@ class EndpointArc(patches.Arc):
 
         # step 2: find the center of the ellipse in the new coordinate system
         sign = -1 if large == sweep else 1
-        a = ((rx*rx*ry*ry - rx*rx*y1p*y1p - ry*ry*x1p*x1p) / 
+        a = ((rx*rx*ry*ry - rx*rx*y1p*y1p - ry*ry*x1p*x1p) /
              (rx*rx*y1p*y1p + ry*ry*x1p*x1p))
         cxp = sign * np.sqrt(a) * (rx*y1p / ry)
         cyp = sign * np.sqrt(a) * (-ry*x1p / rx)
@@ -113,10 +124,10 @@ class EndpointArc(patches.Arc):
 
         # step 4: compute angles
         theta1 = find_angle(
-            [1, 0], 
+            [1, 0],
             [(x1p - cxp)/rx, (y1p - cyp)/ry]) * 180/np.pi
         dt = find_angle(
-            [(x1p-cxp)/rx,   (y1p-cyp)/ry], 
+            [(x1p-cxp)/rx,   (y1p-cyp)/ry],
             [(-x1p-cxp)/rx, (-y1p-cyp)/ry]) * 180/np.pi
         dt %= 360
         if not sweep and dt > 0:
@@ -127,20 +138,23 @@ class EndpointArc(patches.Arc):
 
         # generate an arc using center parameterization
         super(EndpointArc, self).__init__(
-            xy=(cx, cy), 
+            xy=(cx, cy),
             width=rx*2,
-            height=ry*2, 
+            height=ry*2,
             angle=angle,
             theta1=theta1,
             theta2=theta2)
 
-        
+
 def _tokenize_path(d):
     for command, args in COMMAND_RE.findall(d):
         values = [float(v) for v in FLOAT_RE.findall(args)]
-        yield command, values
+        while values:
+            params = PARAMS[command.upper()]
+            consumed, values = values[:params], values[params:]
+            yield command, consumed
+            
 
-    
 def parse_path(d):
     """
     Parse a path definition string (i.e., path data or ``d`` attribute)
@@ -154,7 +168,7 @@ def parse_path(d):
     Returns
     -------
     ``matplotlib.path.Path`` object.
-    
+
     """
     all_verts = []
     all_codes = []
@@ -162,27 +176,27 @@ def parse_path(d):
     last_verts = None
     last_command = None
     start_point = current_point
-    
+
     for command, values in _tokenize_path(d):
-        
+
         is_relative = command.islower()
         command = command.upper()
-        
+
         if command == 'Z':
             # Close path. A point is required but ignored.
             verts = np.array(start_point)
             codes = COMMANDS[command]
-            
+
         elif command == 'H':
             # Horizontal line.
             verts = np.r_[values, 0.]
             codes = COMMANDS[command]
-            
+
         elif command == 'V':
             # Vertical line.
             verts = np.r_[0., values]
             codes = COMMANDS[command]
-            
+
         elif command == 'T':
             # Smooth quadratic curve. If previous command was a Q/q or T/t,
             # the control point is the "reflection" of the second control point
@@ -208,7 +222,7 @@ def parse_path(d):
                 control_point += [dx, dy]
             verts = np.r_[control_point, values]
             codes = COMMANDS[command]
-        
+
         elif command == 'A':
             # Elliptical arc using endpoint parameterization.
             x1, y1 = 0., 0.
@@ -221,21 +235,21 @@ def parse_path(d):
             # First command is a MOVETO, which would make a new subpath. Drop it.
             verts = verts[1:, :].ravel()
             codes = codes[1:].ravel()
-            
+
         else:
             # M, L, Q, C
             verts = np.array(values)
             codes = COMMANDS[command]
-        
+
         verts = verts.reshape(len(verts)//2, 2)
-        
-        if is_relative: 
+
+        if is_relative:
             verts += current_point
-        
+
         last_verts = verts
         last_command = command
         current_point = verts[-1]
         all_verts.extend(verts.tolist())
         all_codes.extend(codes)
-    
+
     return Path(all_verts, all_codes)
