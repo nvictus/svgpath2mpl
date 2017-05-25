@@ -10,7 +10,7 @@ cubic and quadratic Béziers), arc and closepath instructions. See the SVG
 Path specification at <https://www.w3.org/TR/SVG/paths.html>.
 
 :copyright: (c) 2016, Nezar Abdennur.
-:license: MIT.
+:license: BSD.
 
 """
 from __future__ import division, print_function
