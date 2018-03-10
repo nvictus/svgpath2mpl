@@ -147,13 +147,38 @@ class EndpointArc(patches.Arc):
 
 
 def _tokenize_path(d):
-    for command, args in COMMAND_RE.findall(d):
+    commands_args = COMMAND_RE.findall(d)
+
+    # Begin a path. First command.
+    command, args = commands_args[0]
+    command, is_relative = command.upper(), command.islower()
+    params = PARAMS[command]
+    
+    # Must begin with a MOVETO.
+    # Implicit LINETOs for subsequent arguments after a MOVETO
+    # Even if relative, treat the first application as absolute
+    values = [float(v) for v in FLOAT_RE.findall(args)]
+    consumed, values = values[:params], values[params:]
+    if command == 'M':
+        yield command, False, consumed
+        command = 'L'
+        params = PARAMS[command]
+    else:
+        warnings.warn('New path should start with a MOVETO')
+        yield command, is_relative, consumed
+    while values:
+        consumed, values = values[:params], values[params:]
+        yield command, is_relative, consumed
+
+    # Parse the remainder
+    for command, args in commands_args[1:]:
+        command, is_relative = command.upper(), command.islower()
+        params = PARAMS[command]
         values = [float(v) for v in FLOAT_RE.findall(args)]
         while values:
-            params = PARAMS[command.upper()]
             consumed, values = values[:params], values[params:]
-            yield command, consumed
-            
+            yield command, is_relative, consumed
+
 
 def parse_path(d):
     """
@@ -177,10 +202,7 @@ def parse_path(d):
     last_command = None
     start_point = current_point
 
-    for command, values in _tokenize_path(d):
-
-        is_relative = command.islower()
-        command = command.upper()
+    for command, is_relative, values in _tokenize_path(d):
 
         if command == 'Z':
             # Close path. A point is required but ignored.
