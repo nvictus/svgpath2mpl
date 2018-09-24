@@ -189,12 +189,12 @@ def parse_path(d):
 
         elif command == 'H':
             # Horizontal line.
-            verts = np.r_[values, 0.]
+            verts = np.r_[values, 0. if is_relative else current_point[1]]
             codes = COMMANDS[command]
 
         elif command == 'V':
             # Vertical line.
-            verts = np.r_[0., values]
+            verts = np.r_[0. if is_relative else current_point[0], values]
             codes = COMMANDS[command]
 
         elif command == 'T':
