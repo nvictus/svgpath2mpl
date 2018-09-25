@@ -212,14 +212,35 @@ def parse_path(d):
 
         elif command == 'S':
             # Smooth cubic curve. If previous command was a C/c or S/s,
-            # the control point is the "reflection" of the third control point
-            # in the previous segment.
+            # the control point is the "reflection" of the second control point
+            # in the previous segment. Otherwise the control point is the 
+            # current_point
             control_point = np.array([0., 0.])
-            if last_command in ('C', 'S'):
-                x1, y1 = last_verts[-3]
-                x2, y2 = current_point
-                dx, dy = x2 - x1, y2 - y1
-                control_point += [dx, dy]
+            if is_relative:
+                
+                if last_command in ('C', 'S'):
+                        x1, y1 = last_verts[-2]
+                        control_point += [x1, y1]
+                        values_copy = np.asarray(values).reshape(-1,2)
+                        values_copy += current_point
+                        values = np.ravel(values_copy)
+                        
+        
+                else:
+                        x1,y1 = last_verts[-1]
+                        control_point += [x1, y1]
+                        values_copy = np.asarray(values).reshape(-1,2)
+                        values_copy += current_point
+                        values = np.ravel(values_copy)
+                        
+            else:
+                if last_command in ('C', 'S'):
+                        x1, y1 = last_verts[-2]
+                        control_point += [x1, y1]
+                else:
+                        x1,y1 = last_verts[-1]
+                        control_point += [x1, y1]
+                    
             verts = np.r_[control_point, values]
             codes = COMMANDS[command]
 
@@ -243,7 +264,7 @@ def parse_path(d):
 
         verts = verts.reshape(len(verts)//2, 2)
 
-        if is_relative:
+        if is_relative and command != 'S':
             verts += current_point
 
         last_verts = verts
