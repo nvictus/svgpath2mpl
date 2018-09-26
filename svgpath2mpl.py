@@ -213,34 +213,32 @@ def parse_path(d):
         elif command == 'S':
             # Smooth cubic curve. If previous command was a C/c or S/s,
             # the control point is the "reflection" of the second control point
-            # in the previous segment. Otherwise the control point is the 
-            # current_point
+            # in the previous segment. 
+            # Otherwise the control point is the current_point
             control_point = np.array([0., 0.])
             if is_relative:
                 
                 if last_command in ('C', 'S'):
                         x1, y1 = last_verts[-2]
-                        control_point += [x1, y1]
-                        values_copy = np.asarray(values).reshape(-1,2)
-                        values_copy += current_point
-                        values = np.ravel(values_copy)
-                        
-        
+                    
                 else:
-                        x1,y1 = last_verts[-1]
-                        control_point += [x1, y1]
-                        values_copy = np.asarray(values).reshape(-1,2)
-                        values_copy += current_point
-                        values = np.ravel(values_copy)
-                        
+                        x1, y1 = current_point
+                          
+                control_point += [x1, y1]
+                values_copy = np.asarray(values).reshape(-1,2)
+                values_copy += current_point
+                values = np.ravel(values_copy) 
+                
             else:
+                
                 if last_command in ('C', 'S'):
                         x1, y1 = last_verts[-2]
-                        control_point += [x1, y1]
+                        
                 else:
-                        x1,y1 = last_verts[-1]
-                        control_point += [x1, y1]
-                    
+                        x1, y1 = current_point
+                        
+                control_point += [x1, y1]
+                
             verts = np.r_[control_point, values]
             codes = COMMANDS[command]
 
@@ -262,7 +260,7 @@ def parse_path(d):
             verts = np.array(values)
             codes = COMMANDS[command]
 
-        verts = verts.reshape(len(verts)//2, 2)
+        verts = verts.reshape(-1, 2) 
 
         if is_relative and command != 'S':
             verts += current_point
