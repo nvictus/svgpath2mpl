@@ -149,11 +149,25 @@ class EndpointArc(patches.Arc):
 def _tokenize_path(d):
     for command, args in COMMAND_RE.findall(d):
         values = [float(v) for v in FLOAT_RE.findall(args)]
-        while values:
-            params = PARAMS[command.upper()]
-            consumed, values = values[:params], values[params:]
-            yield command, consumed
+        if command in ['m', 'M'] and len(values) > 2:
+            implicit = list('l' if command.islower() 
+                                     else 'L')*(len(values)//2 -1)
+            implicit.insert(0, command)
             
+            command = implicit
+            cnt =  0
+            while values:
+                params = PARAMS[command[cnt].upper()]
+                consumed, values = values[:params], values[params:]
+                yield command[cnt], consumed
+                cnt += 1
+        else:
+            while values:
+             params = PARAMS[command.upper()]
+             consumed, values = values[:params], values[params:]
+             yield command, consumed
+            
+
 
 def parse_path(d):
     """
@@ -228,6 +242,7 @@ def parse_path(d):
                 values_copy = np.asarray(values).reshape(-1,2)
                 values_copy += current_point
                 values = np.ravel(values_copy) 
+        
                 
             else:
                 
