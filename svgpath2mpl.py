@@ -149,12 +149,35 @@ class EndpointArc(patches.Arc):
 def _tokenize_path(d):
     for command, args in COMMAND_RE.findall(d):
         values = [float(v) for v in FLOAT_RE.findall(args)]
+<<<<<<< HEAD
         while values:
             params = PARAMS[command.upper()]
             consumed, values = values[:params], values[params:]
             yield command, consumed
             
 
+=======
+        if command in ['m', 'M'] and len(values) > 2:
+            implicit = list('l' if command.islower() 
+                                     else 'L')*(len(values)//2 -1)
+            implicit.insert(0, command)
+            
+            command = implicit
+            cnt =  0
+            while values:
+                params = PARAMS[command[cnt].upper()]
+                consumed, values = values[:params], values[params:]
+                yield command[cnt], consumed
+                cnt += 1
+        else:
+            while values:
+             params = PARAMS[command.upper()]
+             consumed, values = values[:params], values[params:]
+             yield command, consumed
+            
+
+
+>>>>>>> 92a809ff1b83b5bc03eafc59f5a89aa5ca73a945
 def parse_path(d):
     """
     Parse a path definition string (i.e., path data or ``d`` attribute)
@@ -189,12 +212,20 @@ def parse_path(d):
 
         elif command == 'H':
             # Horizontal line.
+<<<<<<< HEAD
             verts = np.r_[values, 0.]
+=======
+            verts = np.r_[values, 0. if is_relative else current_point[1]]
+>>>>>>> 92a809ff1b83b5bc03eafc59f5a89aa5ca73a945
             codes = COMMANDS[command]
 
         elif command == 'V':
             # Vertical line.
+<<<<<<< HEAD
             verts = np.r_[0., values]
+=======
+            verts = np.r_[0. if is_relative else current_point[0], values]
+>>>>>>> 92a809ff1b83b5bc03eafc59f5a89aa5ca73a945
             codes = COMMANDS[command]
 
         elif command == 'T':
@@ -212,6 +243,7 @@ def parse_path(d):
 
         elif command == 'S':
             # Smooth cubic curve. If previous command was a C/c or S/s,
+<<<<<<< HEAD
             # the control point is the "reflection" of the third control point
             # in the previous segment.
             control_point = np.array([0., 0.])
@@ -220,6 +252,36 @@ def parse_path(d):
                 x2, y2 = current_point
                 dx, dy = x2 - x1, y2 - y1
                 control_point += [dx, dy]
+=======
+            # the control point is the "reflection" of the second control point
+            # in the previous segment. 
+            # Otherwise the control point is the current_point
+            control_point = np.array([0., 0.])
+            if is_relative:
+                
+                if last_command in ('C', 'S'):
+                        x1, y1 = last_verts[-2]
+                    
+                else:
+                        x1, y1 = current_point
+                          
+                control_point += [x1, y1]
+                values_copy = np.asarray(values).reshape(-1,2)
+                values_copy += current_point
+                values = np.ravel(values_copy) 
+        
+                
+            else:
+                
+                if last_command in ('C', 'S'):
+                        x1, y1 = last_verts[-2]
+                        
+                else:
+                        x1, y1 = current_point
+                        
+                control_point += [x1, y1]
+                
+>>>>>>> 92a809ff1b83b5bc03eafc59f5a89aa5ca73a945
             verts = np.r_[control_point, values]
             codes = COMMANDS[command]
 
@@ -241,9 +303,15 @@ def parse_path(d):
             verts = np.array(values)
             codes = COMMANDS[command]
 
+<<<<<<< HEAD
         verts = verts.reshape(len(verts)//2, 2)
 
         if is_relative:
+=======
+        verts = verts.reshape(-1, 2) 
+
+        if is_relative and command != 'S':
+>>>>>>> 92a809ff1b83b5bc03eafc59f5a89aa5ca73a945
             verts += current_point
 
         last_verts = verts
