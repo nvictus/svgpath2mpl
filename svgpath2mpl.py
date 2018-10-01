@@ -1,33 +1,103 @@
-# -*- coding: utf-8 -*-
-"""
-SVGPATH2MPL
-~~~~~~~~~~~
-Parse SVG path data strings into matplotlib `Path` objects.
-
-A path in SVG is defined by a 'path' element which contains a
-``d="(path data)"`` attribute that contains moveto, line, curve (both
-cubic and quadratic Béziers), arc and closepath instructions. See the SVG
-Path specification at <https://www.w3.org/TR/SVG/paths.html>.
-
-:copyright: (c) 2016, Nezar Abdennur.
-:license: BSD.
-
-"""
-from __future__ import division, print_function
-import re
-
 from matplotlib.path import Path
 import matplotlib.patches as patches
 import numpy as np
+from math import sin, cos, sqrt, degrees, radians, acos
+import re
 
 
-__version__ = '0.1.0'
-__all__ = ['parse_path', 'EndpointArc']
+def endpoint_to_center(start, radius, rotation, large, sweep, end):
+    # step 1
+    cosr = cos(radians(rotation))
+    sinr = sin(radians(rotation))
+    dx = (start.real - end.real) / 2
+    dy = (start.imag - end.imag) / 2
+    x1prim = cosr * dx + sinr * dy
+    x1prim_sq = x1prim * x1prim
+    y1prim = -sinr * dx + cosr * dy
+    y1prim_sq = y1prim * y1prim
+
+    rx = radius.real
+    rx_sq = rx * rx
+    ry = radius.imag
+    ry_sq = ry * ry
+
+    # Correct out of range radii
+    radius_check = (x1prim_sq / rx_sq) + (y1prim_sq / ry_sq)
+    if radius_check > 1:
+        rx *= sqrt(radius_check)
+        ry *= sqrt(radius_check)
+        rx_sq = rx * rx
+        ry_sq = ry * ry
+
+    # step 2
+    t1 = rx_sq * y1prim_sq
+    t2 = ry_sq * x1prim_sq
+    c = sqrt(abs((rx_sq * ry_sq - t1 - t2) / (t1 + t2)))
+    if large == sweep:
+        c = -c
+    cxprim = c * rx * y1prim / ry
+    cyprim = -c * ry * x1prim / rx
+
+    # step 3
+    center = complex((cosr * cxprim - sinr * cyprim) +
+                     ((start.real + end.real) / 2),
+                     (sinr * cxprim + cosr * cyprim) +
+                     ((start.imag + end.imag) / 2))
+
+    # step 4
+    ux = (x1prim - cxprim) / rx
+    uy = (y1prim - cyprim) / ry
+    vx = (-x1prim - cxprim) / rx
+    vy = (-y1prim - cyprim) / ry
+
+    # the angle between two vectors (1, 0) and ((x1'-cx')/rx, (y1'-c1y/ry))
+    p = ux
+    n = sqrt(ux * ux + uy * uy)
+    # In certain cases the above calculation can through inaccuracies
+    # become just slightly out of range, f ex -1.0000000000000002.
+    d = p / n #np.clip(p / n, -1, 1)
+    theta = degrees(acos(d))
+    if uy < 0:
+        theta = -theta
+
+    # the angle between two vectors ((x1'-cx')/rx, (y1'-c1y/ry)) and 
+    # ((-x1'-cx')/rx, (-y1'-c1y/ry))
+    p = ux * vx + uy * vy
+    n = sqrt((ux * ux + uy * uy) * (vx * vx + vy * vy))
+    # In certain cases the above calculation can through inaccuracies
+    # become just slightly out of range, f ex -1.0000000000000002.
+    d = np.clip(p / n, -1, 1)
+    delta = degrees(acos(d))
+    delta %= 360
+    if (ux * vy - uy * vx) < 0:
+        delta = -delta
+
+    # Make sure delta has the right sign given `sweep`
+    # such that -360 < delta < 360
+    if sweep and delta < 0:
+        delta += 360
+    if not sweep and delta > 0:
+        delta -= 360
+
+    params = dict(
+        xy=(center.real, center.imag),
+        width=radius.real * 2,
+        height=radius.imag * 2,
+        angle=rotation,
+        theta1=theta,
+        theta2=theta + delta,
+        delta=delta,
+    )
+    print(large, sweep, params)
+    return params
 
 
-COMMAND_RE = re.compile(r"([MLHVCSQTAZ])([^MLHVCSQTAZ]*)", re.IGNORECASE)
-FLOAT_RE = re.compile(r"[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?")
-COMMANDS = {
+COMMANDS = set('MmZzLlHhVvCcSsQqTtAa')
+UPPERCASE = set('MZLHVCSQTA')
+
+COMMAND_RE = re.compile("([MmZzLlHhVvCcSsQqTtAa])")
+FLOAT_RE = re.compile("[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?")
+COMMAND_CODES = {
     'M' : (Path.MOVETO,),    # moveto
     'L' : (Path.LINETO,),    # line
     'H' : (Path.LINETO,),    # shorthand for horizontal line
@@ -52,226 +122,258 @@ PARAMS = {
     'A' : 7  # arc
 }
 
-class EndpointArc(patches.Arc):
-    """
-    Compute the path of an elliptical arc specified using "endpoint"
-    parameterization.
+def _tokenize_path(pathdef):
+    for x in COMMAND_RE.split(pathdef):
+        if x in COMMANDS:
+            yield x
+        for token in FLOAT_RE.findall(x):
+            yield token
 
-    Parameters
-    ----------
-    start : pair of numbers
-        The starting point of the arc path.
-    radius : pair of numbers
-        The x and y-components of the arc radius.
-    angle : number
-        The angle in degrees.
-    large : bool
-        Whether to generate a large arc spanning > 180 degrees (True) or a
-        small arc spanning <= 180 degrees (False).
-    sweep : bool
-        Whether the line joining the center to arc sweeps through increasing
-        angles (True) or decreasing angles (False).
-    end : pair of numbers
-        The final point of the arc path.
-
-    Notes
-    -----
-    We must translate the "endpoint" to "center" parameterization.
-    See <http://www.w3.org/TR/SVG/implnote.html#ArcConversionEndpointToCenter>.
-    See also <http://stackoverflow.com/questions/197649/how-to-calculate-
-    center-of-a-ellipse-by-two-points-and-radius-sizes>.
-
-    """
-    def __init__(self, start, radius, angle, large, sweep, end, **kwargs):
-        x1, y1 = start
-        rx, ry = radius
-        x2, y2 = end
-        def find_angle(u, v):
-            u, v = map(np.asarray, [u, v])
-            c = np.dot(u, v) / np.linalg.norm(u) / np.linalg.norm(v)
-            return np.arccos(np.clip(c, -1, 1))
-
-        # Handle out-of-range parameters
-        # http://www.w3.org/TR/SVG/implnote.html#ArcOutOfRangeParameters
-        if rx == 0 or ry == 0:
-            return Path([[x2, y2]], [Path.MOVETO])
-        if rx < 0: rx = abs(rx)
-        if ry < 0: ry = abs(ry)
-        angle = angle % 360
-
-        # Translate the origin to the midpoint of the line joining (x1,y1) and
-        # (x2,y2) and rotate the x & y axes to align with the axes of the
-        # ellipse
-        # step 1: transform (x1, y1) to the new coordinate system
-        phi_rad = angle * np.pi / 180
-        x1p = np.cos(phi_rad)*(x1-x2)/2 + np.sin(phi_rad)*(y1-y2)/2
-        y1p = -np.sin(phi_rad)*(x1-x2)/2 + np.cos(phi_rad)*(y1-y2)/2
-        lambd = ( (x1p * x1p) / (rx * rx) ) + ( (y1p * y1p) / (ry * ry) )
-        if lambd > 1:
-            rx = np.sqrt(lambd) * rx
-            ry = np.sqrt(lambd) * ry
-
-        # step 2: find the center of the ellipse in the new coordinate system
-        sign = -1 if large == sweep else 1
-        a = ((rx*rx*ry*ry - rx*rx*y1p*y1p - ry*ry*x1p*x1p) /
-             (rx*rx*y1p*y1p + ry*ry*x1p*x1p))
-        cxp = sign * np.sqrt(a) * (rx*y1p / ry)
-        cyp = sign * np.sqrt(a) * (-ry*x1p / rx)
-
-        # step 3: transform (cx', cy') back to the original coordinate system
-        cx = np.cos(phi_rad)*cxp - np.sin(phi_rad)*cyp + (x1+x2)/2
-        cy = np.sin(phi_rad)*cxp + np.cos(phi_rad)*cyp + (y1+y2)/2
-
-        # step 4: compute angles
-        theta1 = find_angle(
-            [1, 0],
-            [(x1p - cxp)/rx, (y1p - cyp)/ry]) * 180/np.pi
-        dt = find_angle(
-            [(x1p-cxp)/rx,   (y1p-cyp)/ry],
-            [(-x1p-cxp)/rx, (-y1p-cyp)/ry]) * 180/np.pi
-        dt %= 360
-        if not sweep and dt > 0:
-            dt -= 360
-        elif sweep and dt < 0:
-            dt += 360
-        theta2 = theta1 - dt
-
-        # generate an arc using center parameterization
-        super(EndpointArc, self).__init__(
-            xy=(cx, cy),
-            width=rx*2,
-            height=ry*2,
-            angle=angle,
-            theta1=theta1,
-            theta2=theta2)
+            
+def _next_pos(elements):
+    return float(elements.pop()) + float(elements.pop()) * 1j
 
 
-def _tokenize_path(d):
-    commands_args = COMMAND_RE.findall(d)
+def _parse_path(pathdef, current_pos=0 + 0j):
+    # In the SVG specs, initial movetos are absolute, even if
+    # specified as 'm'. This is the default behavior here as well.
+    # But if you pass in a current_pos variable, the initial moveto
+    # will be relative to that current_pos. This is useful.
+    elements = list(_tokenize_path(pathdef))
+    # Reverse for easy use of .pop()
+    elements.reverse()
 
-    # Begin a path. First command.
-    command, args = commands_args[0]
-    command, is_relative = command.upper(), command.islower()
-    params = PARAMS[command]
-    
-    # Must begin with a MOVETO.
-    # Implicit LINETOs for subsequent arguments after a MOVETO
-    # Even if relative, treat the first application as absolute
-    values = [float(v) for v in FLOAT_RE.findall(args)]
-    consumed, values = values[:params], values[params:]
-    if command == 'M':
-        yield command, False, consumed
-        command = 'L'
-        params = PARAMS[command]
-    else:
-        warnings.warn('New path should start with a MOVETO')
-        yield command, is_relative, consumed
-    while values:
-        consumed, values = values[:params], values[params:]
-        yield command, is_relative, consumed
+    start_pos = None
+    command = None
+    #segments = path.Path()
 
-    # Parse the remainder
-    for command, args in commands_args[1:]:
-        command, is_relative = command.upper(), command.islower()
-        params = PARAMS[command]
-        values = [float(v) for v in FLOAT_RE.findall(args)]
-        while values:
-            consumed, values = values[:params], values[params:]
-            yield command, is_relative, consumed
+    while elements:
 
-
-def parse_path(d):
-    """
-    Parse a path definition string (i.e., path data or ``d`` attribute)
-    defining a shape in SVG into a matplotlib path object for plotting.
-
-    Parameters
-    ----------
-    d : str
-        SVG path data string.
-
-    Returns
-    -------
-    ``matplotlib.path.Path`` object.
-
-    """
-    all_verts = []
-    all_codes = []
-    current_point = np.array([0., 0.])
-    last_verts = None
-    last_command = None
-    start_point = current_point
-
-    for command, is_relative, values in _tokenize_path(d):
-
-        if command == 'Z':
-            # Close path. A point is required but ignored.
-            verts = np.array(start_point)
-            codes = COMMANDS[command]
-
-        elif command == 'H':
-            # Horizontal line.
-            verts = np.r_[values, 0.]
-            codes = COMMANDS[command]
-
-        elif command == 'V':
-            # Vertical line.
-            verts = np.r_[0., values]
-            codes = COMMANDS[command]
-
-        elif command == 'T':
-            # Smooth quadratic curve. If previous command was a Q/q or T/t,
-            # the control point is the "reflection" of the second control point
-            # in the previous segment.
-            control_point = np.array([0., 0.])
-            if last_command in ('Q', 'T'):
-                x1, y1 = last_verts[-2]
-                x2, y2 = current_point
-                dx, dy = x2 - x1, y2 - y1
-                control_point += [dx, dy]
-            verts = np.r_[control_point, values]
-            codes = COMMANDS[command]
-
-        elif command == 'S':
-            # Smooth cubic curve. If previous command was a C/c or S/s,
-            # the control point is the "reflection" of the third control point
-            # in the previous segment.
-            control_point = np.array([0., 0.])
-            if last_command in ('C', 'S'):
-                x1, y1 = last_verts[-3]
-                x2, y2 = current_point
-                dx, dy = x2 - x1, y2 - y1
-                control_point += [dx, dy]
-            verts = np.r_[control_point, values]
-            codes = COMMANDS[command]
-
-        elif command == 'A':
-            # Elliptical arc using endpoint parameterization.
-            x1, y1 = 0., 0.
-            rx, ry, phi, large, sweep, x2, y2 = values
-            arc = EndpointArc((x1, y1), (rx, ry), phi, large, sweep, (x2, y2))
-            arcpath = arc.get_path()
-            # Get the right vertex coordinates
-            verts = arc.get_patch_transform().transform(arcpath.vertices)
-            codes = arcpath.codes
-            # First command is a MOVETO, which would make a new subpath. Drop it.
-            verts = verts[1:, :].ravel()
-            codes = codes[1:].ravel()
-
+        if elements[-1] in COMMANDS:
+            # New command.
+            last_command = command  # Used by S and T
+            command = elements.pop()
+            absolute = command in UPPERCASE
+            command = command.upper()
         else:
-            # M, L, Q, C
-            verts = np.array(values)
-            codes = COMMANDS[command]
+            # Implicit command.
+            # If this element starts with numbers, it is an implicit command
+            # and we don't change the command. Check that it's allowed:
+            if command is None:
+                raise ValueError(
+                    "Unallowed implicit command in {}, position {}".format(
+                    pathdef, len(pathdef.split()) - len(elements)))
+            last_command = command  # Used by S and T
 
-        verts = verts.reshape(len(verts)//2, 2)
 
-        if is_relative:
-            verts += current_point
+        # Parse the command
 
-        last_verts = verts
-        last_command = command
-        current_point = verts[-1]
-        all_verts.extend(verts.tolist())
-        all_codes.extend(codes)
+        # MOVETO
+        if command == 'M':
+            # Moveto command.
+            pos = _next_pos(elements)
+            if absolute:
+                current_pos = pos
+            else:
+                current_pos += pos
 
-    return Path(all_verts, all_codes)
+            # when M is called, reset start_pos
+            # This behavior of Z is defined in svg spec:
+            # http://www.w3.org/TR/SVG/paths.html#PathDataClosePathCommand
+            start_pos = current_pos
+
+            yield COMMAND_CODES['M'], [(current_pos.real, current_pos.imag)]
+
+            # Implicit moveto commands are treated as lineto commands.
+            # So we set command to lineto here, in case there are
+            # further implicit commands after this moveto.
+            command = 'L'
+
+        # CLOSEPATH
+        elif command == 'Z':
+            if current_pos != start_pos:
+                #segments.append(path.Line(current_pos, start_pos))
+                verts = [(start_pos.real, start_pos.imag)]
+                yield COMMAND_CODES['L'], verts
+            #segments.closed = True
+            # point is required but ignored
+            verts = [(start_pos.real, start_pos.imag)]
+            yield COMMAND_CODES['Z'], verts
+
+            current_pos = start_pos
+            start_pos = None
+            command = None  # You can't have implicit commands after closing.
+            
+
+            
+        # LINETO
+        elif command == 'L':
+            pos = _next_pos(elements)
+            if not absolute:
+                pos += current_pos
+            
+            #segments.append(path.Line(current_pos, pos))
+            verts = [
+                     (pos.real, pos.imag)]
+            yield COMMAND_CODES['L'], verts
+            current_pos = pos
+
+        # HORIZONTAL_PATHTO
+        elif command == 'H':
+            x = elements.pop()
+            pos = float(x) + current_pos.imag * 1j
+            if not absolute:
+                pos += current_pos.real
+
+            #segments.append(path.Line(current_pos, pos))
+            verts = [
+                     (pos.real, pos.imag)]
+            yield COMMAND_CODES['H'], verts
+            current_pos = pos
+
+        # VERTICAL_PATHTO
+        elif command == 'V':
+            y = elements.pop()
+            pos = current_pos.real + float(y) * 1j
+            if not absolute:
+                pos += current_pos.imag * 1j
+
+            #segments.append(path.Line(current_pos, pos))
+            verts = [
+                     (pos.real, pos.imag)]
+            yield COMMAND_CODES['V'], verts
+            current_pos = pos
+
+        # CUBIC_BEZIER
+        elif command == 'C':
+            control1 = _next_pos(elements)
+            control2 = _next_pos(elements)
+            end = _next_pos(elements)
+            if not absolute:
+                control1 += current_pos
+                control2 += current_pos
+                end += current_pos
+
+            #segments.append(path.CubicBezier(current_pos, control1, control2, end))
+            verts = [
+                     (control1.real, control1.imag),
+                     (control2.real, control2.imag),
+                     (end.real, end.imag)]
+            yield COMMAND_CODES['C'], verts
+            current_pos = end
+
+        # SMOOTH_CUBIC_BEZIER
+        elif command == 'S':
+            # Smooth curve. First control point is the "reflection" of
+            # the second control point in the previous path.
+            if last_command not in 'CS':
+                # If there is no previous command or if the previous command
+                # was not an C, c, S or s, assume the first control point is
+                # coincident with the current point.
+                control1 = current_pos
+            else:
+                # The first control point is assumed to be the reflection of
+                # the second control point on the previous command relative
+                # to the current point.
+                last_control = control2
+                control1 = current_pos + current_pos - last_control #segments[-1].control2
+            control2 = _next_pos(elements)
+            end = _next_pos(elements)
+            if not absolute:
+                control2 += current_pos
+                end += current_pos
+
+            #segments.append(path.CubicBezier(current_pos, control1, control2, end))
+            verts = [
+                     (control1.real, control1.imag),
+                     (control2.real, control2.imag),
+                     (end.real, end.imag)]
+            yield COMMAND_CODES['S'], verts
+            current_pos = end
+
+        # QUADRATIC_BEZIER
+        elif command == 'Q':
+            control = _next_pos(elements)
+            end = _next_pos(elements)
+            if not absolute:
+                control += current_pos
+                end += current_pos
+
+            #segments.append(path.QuadraticBezier(current_pos, control, end))
+            verts = [
+                     (control.real, control.imag),
+                     (end.real, end.imag)]
+            yield COMMAND_CODES['Q'], verts
+            current_pos = end
+
+        # SMOOTH_QUADRATIC_BEZIER
+        elif command == 'T':
+            # Smooth curve. Control point is the "reflection" of
+            # the second control point in the previous path.
+            if last_command not in 'QT':
+                # If there is no previous command or if the previous command
+                # was not an Q, q, T or t, assume the first control point is
+                # coincident with the current point.
+                control = current_pos
+            else:
+                # The control point is assumed to be the reflection of
+                # the control point on the previous command relative
+                # to the current point.
+                last_control = control
+                control = current_pos + current_pos - last_control #segments[-1].control
+            end = _next_pos(elements)
+            if not absolute:
+                end += current_pos
+
+            #segments.append(path.QuadraticBezier(current_pos, control, end))
+            verts = [
+                     (control.real, control.imag),
+                     (end.real, end.imag)]
+            yield COMMAND_CODES['T'], verts
+            current_pos = end
+
+        # ELLIPTICAL_ARC
+        elif command == 'A':
+            radius = _next_pos(elements)
+            rotation = float(elements.pop())
+            large = float(elements.pop())
+            sweep = float(elements.pop())
+            end = _next_pos(elements)
+            if not absolute:
+                end += current_pos
+
+            p = endpoint_to_center(
+                current_pos, radius, rotation, large, sweep, end)
+            arc = Path.arc(theta1=p['theta1'], 
+                           theta2=p['theta2'])
+            from matplotlib import transforms
+            trans = (transforms.Affine2D()
+                              .scale(p['width']/2, p['height']/2)
+                              .translate(p['xy'][0], p['xy'][1])
+                              .rotate_deg_around(p['xy'][0], p['xy'][1], rotation)
+            )
+            arc = trans.transform_path(arc)
+
+            verts = np.array(arc.vertices)
+            codes = arc.codes
+            
+            # theta = radians(rotation)
+            # R = np.array([[cos(theta), -sin(theta)],
+            #               [sin(theta), cos(theta)]])
+            # verts = R.dot(verts.T).T
+            # verts[:, 0] *= p['width'] / 2
+            # verts[:, 1] *= p['height'] / 2
+            # verts[:, 0] += p['xy'][0]
+            # verts[:, 1] += p['xy'][1]
+            yield codes[1:], verts[1:, :]
+
+            current_pos = end
+
+            
+def parse_path(pathdef, current_pos=0 + 0j):
+    codes = []
+    verts = []
+    for c, v in _parse_path(pathdef, current_pos):
+        codes.extend(c)
+        verts.extend(v)
+    return Path(verts, codes)
