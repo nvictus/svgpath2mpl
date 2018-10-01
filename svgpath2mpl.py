@@ -1,11 +1,80 @@
-from matplotlib.path import Path
-import matplotlib.patches as patches
-import numpy as np
+# -*- coding: utf-8 -*-
+"""
+SVGPATH2MPL
+~~~~~~~~~~~
+Parse SVG path data strings into matplotlib `Path` objects.
+A path in SVG is defined by a 'path' element which contains a
+``d="(path data)"`` attribute that contains moveto, line, curve (both
+cubic and quadratic Béziers), arc and closepath instructions. See the SVG
+Path specification at <https://www.w3.org/TR/SVG/paths.html>.
+
+:copyright: (c) 2016, Nezar Abdennur.
+:license: BSD.
+
+Notes 
+~~~~~
+2018-10: Parser re-write based largely on svg.path
+(https://github.com/regebro/svg.path/blob/master/src/svg/path/parser.py)
+2D coordinates are now encoded as complex numbers.
+
+"""
+from __future__ import division, print_function
 from math import sin, cos, sqrt, degrees, radians, acos
 import re
 
+from matplotlib.path import Path
+import matplotlib.patches as patches
+import numpy as np
+
+__version__ = '0.2.0-dev'
+__all__ = ['parse_path']
+
+
+COMMANDS = set('MmZzLlHhVvCcSsQqTtAa')
+UPPERCASE = set('MZLHVCSQTA')
+
+COMMAND_RE = re.compile("([MmZzLlHhVvCcSsQqTtAa])")
+FLOAT_RE = re.compile("[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?")
+
+COMMAND_CODES = {
+    'M' : (Path.MOVETO,),    # moveto
+    'L' : (Path.LINETO,),    # line
+    'H' : (Path.LINETO,),    # shorthand for horizontal line
+    'V' : (Path.LINETO,),    # shorthand for vertical line
+    'Q' : (Path.CURVE3,)*2,  # quadratic bezier
+    'T' : (Path.CURVE3,)*2,  # shorthand for smooth quadratic bezier
+    'C' : (Path.CURVE4,)*3,  # cubic bezier
+    'S' : (Path.CURVE4,)*3,  # shorthand for smooth cubic bezier
+    'Z' : (Path.CLOSEPOLY,), # closepath
+    'A' : None               # arc
+}
+
+PARAMS = {
+    'M' : 2, # moveto
+    'L' : 2, # line
+    'H' : 1, # shorthand for horizontal line
+    'V' : 1, # shorthand for vertical line
+    'Q' : 4, # quadratic bezier
+    'T' : 4, # shorthand for smooth quadratic bezier
+    'C' : 6, # cubic bezier
+    'S' : 6, # shorthand for smooth cubic bezier
+    'Z' : 0, # closepath
+    'A' : 7  # arc
+}
+
 
 def endpoint_to_center(start, radius, rotation, large, sweep, end):
+    """
+    Translates the "endpoint" parameterization of an elliptical arc used by
+    the SVG spec to the "center" parameterization used by matplotlib.
+
+    Notes
+    -----
+    See <http://www.w3.org/TR/SVG/implnote.html#ArcConversionEndpointToCenter>.
+    See also <http://stackoverflow.com/questions/197649/how-to-calculate-
+    center-of-a-ellipse-by-two-points-and-radius-sizes>.
+
+    """
     # step 1
     cosr = cos(radians(rotation))
     sinr = sin(radians(rotation))
@@ -92,36 +161,6 @@ def endpoint_to_center(start, radius, rotation, large, sweep, end):
     return params
 
 
-COMMANDS = set('MmZzLlHhVvCcSsQqTtAa')
-UPPERCASE = set('MZLHVCSQTA')
-
-COMMAND_RE = re.compile("([MmZzLlHhVvCcSsQqTtAa])")
-FLOAT_RE = re.compile("[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?")
-COMMAND_CODES = {
-    'M' : (Path.MOVETO,),    # moveto
-    'L' : (Path.LINETO,),    # line
-    'H' : (Path.LINETO,),    # shorthand for horizontal line
-    'V' : (Path.LINETO,),    # shorthand for vertical line
-    'Q' : (Path.CURVE3,)*2,  # quadratic bezier
-    'T' : (Path.CURVE3,)*2,  # shorthand for smooth quadratic bezier
-    'C' : (Path.CURVE4,)*3,  # cubic bezier
-    'S' : (Path.CURVE4,)*3,  # shorthand for smooth cubic bezier
-    'Z' : (Path.CLOSEPOLY,), # closepath
-    'A' : None               # arc
-}
-PARAMS = {
-    'M' : 2, # moveto
-    'L' : 2, # line
-    'H' : 1, # shorthand for horizontal line
-    'V' : 1, # shorthand for vertical line
-    'Q' : 4, # quadratic bezier
-    'T' : 4, # shorthand for smooth quadratic bezier
-    'C' : 6, # cubic bezier
-    'S' : 6, # shorthand for smooth cubic bezier
-    'Z' : 0, # closepath
-    'A' : 7  # arc
-}
-
 def _tokenize_path(pathdef):
     for x in COMMAND_RE.split(pathdef):
         if x in COMMANDS:
@@ -134,7 +173,7 @@ def _next_pos(elements):
     return float(elements.pop()) + float(elements.pop()) * 1j
 
 
-def _parse_path(pathdef, current_pos=0 + 0j):
+def _parse_path(pathdef, current_pos):
     # In the SVG specs, initial movetos are absolute, even if
     # specified as 'm'. This is the default behavior here as well.
     # But if you pass in a current_pos variable, the initial moveto
@@ -145,9 +184,10 @@ def _parse_path(pathdef, current_pos=0 + 0j):
 
     start_pos = None
     command = None
-    #segments = path.Path()
 
     while elements:
+
+        # 1. Determine the current command
 
         if elements[-1] in COMMANDS:
             # New command.
@@ -166,7 +206,7 @@ def _parse_path(pathdef, current_pos=0 + 0j):
             last_command = command  # Used by S and T
 
 
-        # Parse the command
+        # 2. Parse the current command
 
         # MOVETO
         if command == 'M':
@@ -192,11 +232,12 @@ def _parse_path(pathdef, current_pos=0 + 0j):
         # CLOSEPATH
         elif command == 'Z':
             if current_pos != start_pos:
-                #segments.append(path.Line(current_pos, start_pos))
                 verts = [(start_pos.real, start_pos.imag)]
                 yield COMMAND_CODES['L'], verts
-            #segments.closed = True
-            # point is required but ignored
+            
+            #segments.closed = True  # TODO: we don't need to worry about this but make sure
+
+            # mpl.Path: a point is required but ignored
             verts = [(start_pos.real, start_pos.imag)]
             yield COMMAND_CODES['Z'], verts
 
@@ -204,17 +245,12 @@ def _parse_path(pathdef, current_pos=0 + 0j):
             start_pos = None
             command = None  # You can't have implicit commands after closing.
             
-
-            
         # LINETO
         elif command == 'L':
             pos = _next_pos(elements)
             if not absolute:
                 pos += current_pos
-            
-            #segments.append(path.Line(current_pos, pos))
-            verts = [
-                     (pos.real, pos.imag)]
+            verts = [(pos.real, pos.imag)]
             yield COMMAND_CODES['L'], verts
             current_pos = pos
 
@@ -224,10 +260,7 @@ def _parse_path(pathdef, current_pos=0 + 0j):
             pos = float(x) + current_pos.imag * 1j
             if not absolute:
                 pos += current_pos.real
-
-            #segments.append(path.Line(current_pos, pos))
-            verts = [
-                     (pos.real, pos.imag)]
+            verts = [(pos.real, pos.imag)]
             yield COMMAND_CODES['H'], verts
             current_pos = pos
 
@@ -237,10 +270,7 @@ def _parse_path(pathdef, current_pos=0 + 0j):
             pos = current_pos.real + float(y) * 1j
             if not absolute:
                 pos += current_pos.imag * 1j
-
-            #segments.append(path.Line(current_pos, pos))
-            verts = [
-                     (pos.real, pos.imag)]
+            verts = [(pos.real, pos.imag)]
             yield COMMAND_CODES['V'], verts
             current_pos = pos
 
@@ -256,9 +286,10 @@ def _parse_path(pathdef, current_pos=0 + 0j):
 
             #segments.append(path.CubicBezier(current_pos, control1, control2, end))
             verts = [
-                     (control1.real, control1.imag),
-                     (control2.real, control2.imag),
-                     (end.real, end.imag)]
+                 (control1.real, control1.imag),
+                 (control2.real, control2.imag),
+                 (end.real, end.imag)
+            ]
             yield COMMAND_CODES['C'], verts
             current_pos = end
 
