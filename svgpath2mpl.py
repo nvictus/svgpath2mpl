@@ -23,7 +23,7 @@ from math import sin, cos, sqrt, degrees, radians, acos
 import re
 
 from matplotlib.path import Path
-import matplotlib.patches as patches
+import matplotlib.transforms as transforms
 import numpy as np
 
 __version__ = '0.2.0-dev'
@@ -155,9 +155,7 @@ def endpoint_to_center(start, radius, rotation, large, sweep, end):
         angle=rotation,
         theta1=theta,
         theta2=theta + delta,
-        delta=delta,
     )
-    print(large, sweep, params)
     return params
 
 
@@ -210,7 +208,6 @@ def _parse_path(pathdef, current_pos):
 
         # MOVETO
         if command == 'M':
-            # Moveto command.
             pos = _next_pos(elements)
             if absolute:
                 current_pos = pos
@@ -223,7 +220,7 @@ def _parse_path(pathdef, current_pos):
             start_pos = current_pos
 
             yield COMMAND_CODES['M'], [(current_pos.real, current_pos.imag)]
-
+            
             # Implicit moveto commands are treated as lineto commands.
             # So we set command to lineto here, in case there are
             # further implicit commands after this moveto.
@@ -231,11 +228,10 @@ def _parse_path(pathdef, current_pos):
 
         # CLOSEPATH
         elif command == 'Z':
+            # path closure
             if current_pos != start_pos:
                 verts = [(start_pos.real, start_pos.imag)]
                 yield COMMAND_CODES['L'], verts
-            
-            #segments.closed = True  # TODO: we don't need to worry about this but make sure
 
             # mpl.Path: a point is required but ignored
             verts = [(start_pos.real, start_pos.imag)]
@@ -283,8 +279,6 @@ def _parse_path(pathdef, current_pos):
                 control1 += current_pos
                 control2 += current_pos
                 end += current_pos
-
-            #segments.append(path.CubicBezier(current_pos, control1, control2, end))
             verts = [
                  (control1.real, control1.imag),
                  (control2.real, control2.imag),
@@ -307,18 +301,17 @@ def _parse_path(pathdef, current_pos):
                 # the second control point on the previous command relative
                 # to the current point.
                 last_control = control2
-                control1 = current_pos + current_pos - last_control #segments[-1].control2
+                control1 = current_pos + current_pos - last_control
             control2 = _next_pos(elements)
             end = _next_pos(elements)
             if not absolute:
                 control2 += current_pos
                 end += current_pos
-
-            #segments.append(path.CubicBezier(current_pos, control1, control2, end))
             verts = [
-                     (control1.real, control1.imag),
-                     (control2.real, control2.imag),
-                     (end.real, end.imag)]
+                (control1.real, control1.imag),
+                (control2.real, control2.imag),
+                (end.real, end.imag)
+            ]
             yield COMMAND_CODES['S'], verts
             current_pos = end
 
@@ -329,11 +322,10 @@ def _parse_path(pathdef, current_pos):
             if not absolute:
                 control += current_pos
                 end += current_pos
-
-            #segments.append(path.QuadraticBezier(current_pos, control, end))
             verts = [
-                     (control.real, control.imag),
-                     (end.real, end.imag)]
+                (control.real, control.imag),
+                (end.real, end.imag)
+            ]
             yield COMMAND_CODES['Q'], verts
             current_pos = end
 
@@ -351,15 +343,14 @@ def _parse_path(pathdef, current_pos):
                 # the control point on the previous command relative
                 # to the current point.
                 last_control = control
-                control = current_pos + current_pos - last_control #segments[-1].control
+                control = current_pos + current_pos - last_control
             end = _next_pos(elements)
             if not absolute:
                 end += current_pos
-
-            #segments.append(path.QuadraticBezier(current_pos, control, end))
             verts = [
-                     (control.real, control.imag),
-                     (end.real, end.imag)]
+                (control.real, control.imag),
+                (end.real, end.imag)
+            ]
             yield COMMAND_CODES['T'], verts
             current_pos = end
 
@@ -374,29 +365,42 @@ def _parse_path(pathdef, current_pos):
                 end += current_pos
 
             p = endpoint_to_center(
-                current_pos, radius, rotation, large, sweep, end)
-            arc = Path.arc(theta1=p['theta1'], 
-                           theta2=p['theta2'])
-            from matplotlib import transforms
-            trans = (transforms.Affine2D()
-                              .scale(p['width']/2, p['height']/2)
-                              .translate(p['xy'][0], p['xy'][1])
-                              .rotate_deg_around(p['xy'][0], p['xy'][1], rotation)
+                current_pos, 
+                radius, 
+                rotation, 
+                large, 
+                sweep, 
+                end
+            )
+            
+            # Create an arc on the unit circle
+            if p['theta2'] > p['theta1']:
+                arc = Path.arc(theta1=p['theta1'], 
+                               theta2=p['theta2'])
+            else:
+                arc = Path.arc(theta1=p['theta2'], 
+                               theta2=p['theta1'])
+            
+            # Transform it into an elliptical arc:
+            # * scale the minor and major axes
+            # * translate it to the center
+            # * rotate it so that phi is the angle from the 
+            #   x-axis of the current coordinate system to 
+            #   the x-axis of the ellipse.
+            trans = (
+                transforms.Affine2D()
+                    .scale(p['width']/2, p['height']/2)
+                    .translate(p['xy'][0], p['xy'][1])
+                    .rotate_deg_around(p['xy'][0], p['xy'][1], p['angle'])
             )
             arc = trans.transform_path(arc)
 
             verts = np.array(arc.vertices)
-            codes = arc.codes
-            
-            # theta = radians(rotation)
-            # R = np.array([[cos(theta), -sin(theta)],
-            #               [sin(theta), cos(theta)]])
-            # verts = R.dot(verts.T).T
-            # verts[:, 0] *= p['width'] / 2
-            # verts[:, 1] *= p['height'] / 2
-            # verts[:, 0] += p['xy'][0]
-            # verts[:, 1] += p['xy'][1]
-            yield codes[1:], verts[1:, :]
+            codes = np.array(arc.codes)                
+            if sweep:  # some mysterious hack
+                yield codes[1:], verts[1:, :]
+            else:
+                yield codes, verts
 
             current_pos = end
 
