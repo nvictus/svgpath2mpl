@@ -68,8 +68,40 @@ def endpoint_to_center(start, radius, rotation, large, sweep, end):
     Translates the "endpoint" parameterization of an elliptical arc used by
     the SVG spec to the "center" parameterization used by matplotlib.
 
+    Parameters
+    ----------
+    start : complex
+        Starting point (x1, y1).
+    radius : complex
+        Two elliptical radii (rx, ry).
+    rotation : float
+        Angle from the x-axis of the current coordinate system to the x-axis of
+        the ellipse.
+    large : bool
+        False if an arc spanning < 180 degrees is to be drawn, True if an arc
+        spanning >= 180 degrees is to be drawn.
+    sweep : bool
+        If sweep-flag is True, then the arc will be drawn in a "positive-angle"
+        direction from start to end.
+    end : complex
+        End point (x2, y2).
+
+    Returns
+    -------
+    center : complex
+        Center of the ellipse (xc, yc).
+    theta1, theta2 : float
+        Start and end angles of an arc on the unit circle prior to being
+        stretched and rotated into an elliptical arc.
+
     Notes
     -----
+    One can think of an ellipse as a circle that has been stretched and then
+    rotated. Start by making an arc along the unit circle from `theta1` to
+    `theta2`, centered at `center`. Then scale the circle along the x and y axes
+    according to the given radii. Finally, rotate the arc around the center
+    through the given angle `rotation`.
+
     See <http://www.w3.org/TR/SVG/implnote.html#ArcConversionEndpointToCenter>.
     See also <http://stackoverflow.com/questions/197649/how-to-calculate-
     center-of-a-ellipse-by-two-points-and-radius-sizes>.
@@ -148,15 +180,7 @@ def endpoint_to_center(start, radius, rotation, large, sweep, end):
     if not sweep and delta > 0:
         delta -= 360
 
-    params = dict(
-        xy=(center.real, center.imag),
-        width=radius.real * 2,
-        height=radius.imag * 2,
-        angle=rotation,
-        theta1=theta,
-        theta2=theta + delta,
-    )
-    return params
+    return center, theta, theta + delta
 
 
 def _tokenize_path(pathdef):
@@ -364,7 +388,7 @@ def _parse_path(pathdef, current_pos):
             if not absolute:
                 end += current_pos
 
-            p = endpoint_to_center(
+            center, theta1, theta2 = endpoint_to_center(
                 current_pos, 
                 radius, 
                 rotation, 
@@ -374,30 +398,29 @@ def _parse_path(pathdef, current_pos):
             )
             
             # Create an arc on the unit circle
-            if p['theta2'] > p['theta1']:
-                arc = Path.arc(theta1=p['theta1'], 
-                               theta2=p['theta2'])
+            if theta2 > theta1:
+                arc = Path.arc(theta1=theta1, theta2=theta2)
             else:
-                arc = Path.arc(theta1=p['theta2'], 
-                               theta2=p['theta1'])
+                arc = Path.arc(theta1=theta2, theta2=theta1)
             
             # Transform it into an elliptical arc:
             # * scale the minor and major axes
             # * translate it to the center
-            # * rotate it so that phi is the angle from the 
-            #   x-axis of the current coordinate system to 
-            #   the x-axis of the ellipse.
+            # * rotate the x-axis of the ellipse from the x-axis of the current
+            #   coordinate system
             trans = (
                 transforms.Affine2D()
-                    .scale(p['width']/2, p['height']/2)
-                    .translate(p['xy'][0], p['xy'][1])
-                    .rotate_deg_around(p['xy'][0], p['xy'][1], p['angle'])
+                    .scale(radius.real, radius.imag)
+                    .translate(center.real, center.imag)
+                    .rotate_deg_around(center.real, center.imag, rotation)
             )
             arc = trans.transform_path(arc)
 
             verts = np.array(arc.vertices)
             codes = np.array(arc.codes)                
-            if sweep:  # some mysterious hack
+            if sweep:
+                # mysterious hack needed to render properly when sweeping the
+                # arc angle in the "positive" angular direction
                 yield codes[1:], verts[1:, :]
             else:
                 yield codes, verts
