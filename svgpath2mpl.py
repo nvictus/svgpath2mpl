@@ -26,7 +26,7 @@ from matplotlib.path import Path
 import matplotlib.transforms as transforms
 import numpy as np
 
-__version__ = '0.2.0-dev'
+__version__ = '0.2.1'
 __all__ = ['parse_path']
 
 
