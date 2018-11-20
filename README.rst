@@ -24,7 +24,7 @@ This module adds the path commands missing from (1), including smooth curves and
 	>>> parse_path('M 100 100 L 300 100')
 	Path(array([[ 100.,  100.], [ 300.,  100.]]), array([1, 2], dtype=uint8))
 
-There are likely still issues with implicit commands and subpaths to be sorted out.
+See the Jupyter Notebook `gallery <http://nbviewer.jupyter.org/github/nvictus/svgpath2mpl/tree/master/examples/>`_ of examples.
 
 Resources
 ---------
@@ -36,4 +36,4 @@ See the matplotlib path `tutorial <http://matplotlib.org/users/path_tutorial.htm
 License
 -------
 
-BSD (New).
+BSD (3-Clause).

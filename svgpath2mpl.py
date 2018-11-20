@@ -2,7 +2,7 @@
 """
 SVGPATH2MPL
 ~~~~~~~~~~~
-Parse SVG path data strings into matplotlib `Path` objects.
+Parse SVG path definition strings into matplotlib Path objects.
 A path in SVG is defined by a 'path' element which contains a
 ``d="(path data)"`` attribute that contains moveto, line, curve (both
 cubic and quadratic Béziers), arc and closepath instructions. See the SVG
@@ -10,12 +10,6 @@ Path specification at <https://www.w3.org/TR/SVG/paths.html>.
 
 :copyright: (c) 2016, Nezar Abdennur.
 :license: BSD.
-
-Notes 
-~~~~~
-2018-10: Parser re-write based largely on svg.path
-(https://github.com/regebro/svg.path/blob/master/src/svg/path/parser.py)
-2D coordinates are now encoded as complex numbers.
 
 """
 from __future__ import division, print_function
@@ -161,7 +155,7 @@ def endpoint_to_center(start, radius, rotation, large, sweep, end):
     if uy < 0:
         theta = -theta
 
-    # the angle between two vectors ((x1'-cx')/rx, (y1'-c1y/ry)) and 
+    # the angle between two vectors ((x1'-cx')/rx, (y1'-c1y/ry)) and
     # ((-x1'-cx')/rx, (-y1'-c1y/ry))
     p = ux * vx + uy * vy
     n = sqrt((ux * ux + uy * uy) * (vx * vx + vy * vy))
@@ -190,7 +184,7 @@ def _tokenize_path(pathdef):
         for token in FLOAT_RE.findall(x):
             yield token
 
-            
+
 def _next_pos(elements):
     return float(elements.pop()) + float(elements.pop()) * 1j
 
@@ -244,7 +238,7 @@ def _parse_path(pathdef, current_pos):
             start_pos = current_pos
 
             yield COMMAND_CODES['M'], [(current_pos.real, current_pos.imag)]
-            
+
             # Implicit moveto commands are treated as lineto commands.
             # So we set command to lineto here, in case there are
             # further implicit commands after this moveto.
@@ -264,7 +258,7 @@ def _parse_path(pathdef, current_pos):
             current_pos = start_pos
             start_pos = None
             command = None  # You can't have implicit commands after closing.
-            
+
         # LINETO
         elif command == 'L':
             pos = _next_pos(elements)
@@ -389,20 +383,20 @@ def _parse_path(pathdef, current_pos):
                 end += current_pos
 
             center, theta1, theta2 = endpoint_to_center(
-                current_pos, 
-                radius, 
-                rotation, 
-                large, 
-                sweep, 
+                current_pos,
+                radius,
+                rotation,
+                large,
+                sweep,
                 end
             )
-            
+
             # Create an arc on the unit circle
             if theta2 > theta1:
                 arc = Path.arc(theta1=theta1, theta2=theta2)
             else:
                 arc = Path.arc(theta1=theta2, theta2=theta1)
-            
+
             # Transform it into an elliptical arc:
             # * scale the minor and major axes
             # * translate it to the center
@@ -417,7 +411,7 @@ def _parse_path(pathdef, current_pos):
             arc = trans.transform_path(arc)
 
             verts = np.array(arc.vertices)
-            codes = np.array(arc.codes)                
+            codes = np.array(arc.codes)
             if sweep:
                 # mysterious hack needed to render properly when sweeping the
                 # arc angle in the "positive" angular direction
@@ -427,8 +421,32 @@ def _parse_path(pathdef, current_pos):
 
             current_pos = end
 
-            
+
 def parse_path(pathdef, current_pos=0 + 0j):
+    """
+    Parse an SVG path definition string into a matplotlib Path object.
+
+    Parameters
+    ----------
+    pathdef : str
+        SVG path 'd' attribute, e.g. 'M 100 100 L 300 100 L 200 300 z'.
+    current_pos : complex, optional
+        Coordinates of the starting position of the path, given as a complex
+        number. When provided, an initial moveto operation will be intepreted
+        as relative to this position even if given as M.
+
+    Returns
+    -------
+    :class:`matplotlib.path.Path` instance
+
+    See also
+    --------
+    matplotlib.path.Path
+    matplotlib.patches.PathPatch
+    matplotlib.collections.PathCollection
+    matplotlib.transforms
+
+    """
     codes = []
     verts = []
     for c, v in _parse_path(pathdef, current_pos):
