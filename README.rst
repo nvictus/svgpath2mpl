@@ -20,6 +20,9 @@ Based on:
 
 This module adds the path commands missing from (1), including smooth curves and endpoint-parameterized elliptical arcs.
 
+
+.. code-block:: python
+
 	>>> from svgpath2mpl import parse_path
 	>>> parse_path('M 100 100 L 300 100')
 	Path(array([[ 100.,  100.], [ 300.,  100.]]), array([1, 2], dtype=uint8))
