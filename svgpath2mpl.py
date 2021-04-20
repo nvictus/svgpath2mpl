@@ -8,7 +8,7 @@ A path in SVG is defined by a 'path' element which contains a
 cubic and quadratic Béziers), arc and closepath instructions. See the SVG
 Path specification at <https://www.w3.org/TR/SVG/paths.html>.
 
-:copyright: (c) 2016, Nezar Abdennur.
+:copyright: (c) 2016-2021, Nezar Abdennur.
 :license: BSD.
 
 """
@@ -20,7 +20,7 @@ from matplotlib.path import Path
 import matplotlib.transforms as transforms
 import numpy as np
 
-__version__ = '0.2.1'
+__version__ = '0.2.2'
 __all__ = ['parse_path']
 
 
@@ -60,7 +60,7 @@ PARAMS = {
 def endpoint_to_center(start, radius, rotation, large, sweep, end):
     """
     Translates the "endpoint" parameterization of an elliptical arc used by
-    the SVG spec to the "center" parameterization used by matplotlib.
+    the SVG spec to the "center" parameterization.
 
     Parameters
     ----------
@@ -82,6 +82,8 @@ def endpoint_to_center(start, radius, rotation, large, sweep, end):
 
     Returns
     -------
+    radius : complex
+        Radii of the ellipse (rx, ry), potentially corrected if out-of-range.
     center : complex
         Center of the ellipse (xc, yc).
     theta1, theta2 : float
@@ -90,41 +92,44 @@ def endpoint_to_center(start, radius, rotation, large, sweep, end):
 
     Notes
     -----
-    One can think of an ellipse as a circle that has been stretched and then
-    rotated. Start by making an arc along the unit circle from `theta1` to
-    `theta2`, centered at `center`. Then scale the circle along the x and y axes
-    according to the given radii. Finally, rotate the arc around the center
-    through the given angle `rotation`.
+    See [1]_, `svg.path <https://github.com/regebro/svg.path>`_, and this
+    `SO question <https://stackoverflow.com/q/197649>`_.
 
-    See <http://www.w3.org/TR/SVG/implnote.html#ArcConversionEndpointToCenter>.
-    See also <http://stackoverflow.com/questions/197649/how-to-calculate-
-    center-of-a-ellipse-by-two-points-and-radius-sizes>.
+    References
+    ----------
+
+    .. [1] http://www.w3.org/TR/SVG/implnote.html#ArcImplementationNotes
 
     """
-    # step 1
+    # Step 1: compute x1prim, y1prim
     cosr = cos(radians(rotation))
     sinr = sin(radians(rotation))
     dx = (start.real - end.real) / 2
     dy = (start.imag - end.imag) / 2
     x1prim = cosr * dx + sinr * dy
-    x1prim_sq = x1prim * x1prim
     y1prim = -sinr * dx + cosr * dy
+    x1prim_sq = x1prim * x1prim
     y1prim_sq = y1prim * y1prim
 
-    rx = radius.real
+    rx = abs(radius.real)
+    ry = abs(radius.imag)
     rx_sq = rx * rx
-    ry = radius.imag
     ry_sq = ry * ry
 
     # Correct out of range radii
-    radius_check = (x1prim_sq / rx_sq) + (y1prim_sq / ry_sq)
-    if radius_check > 1:
-        rx *= sqrt(radius_check)
-        ry *= sqrt(radius_check)
+    radius_scale = (x1prim_sq / rx_sq) + (y1prim_sq / ry_sq)
+    if radius_scale > 1:
+        radius_scale = sqrt(radius_scale)
+        rx *= radius_scale
+        ry *= radius_scale
         rx_sq = rx * rx
         ry_sq = ry * ry
+    else:
+        # SVG spec only scales UP
+        radius_scale = 1
+    radius = rx + ry * 1j
 
-    # step 2
+    # Step 2: compute cxprim, cyprim
     t1 = rx_sq * y1prim_sq
     t2 = ry_sq * x1prim_sq
     c = sqrt(abs((rx_sq * ry_sq - t1 - t2) / (t1 + t2)))
@@ -133,48 +138,129 @@ def endpoint_to_center(start, radius, rotation, large, sweep, end):
     cxprim = c * rx * y1prim / ry
     cyprim = -c * ry * x1prim / rx
 
-    # step 3
-    center = complex((cosr * cxprim - sinr * cyprim) +
-                     ((start.real + end.real) / 2),
-                     (sinr * cxprim + cosr * cyprim) +
-                     ((start.imag + end.imag) / 2))
+    # Step 3: compute the center from cxprim, cyprim
+    center = complex(
+        (cosr * cxprim - sinr * cyprim) + ((start.real + end.real) / 2),
+        (sinr * cxprim + cosr * cyprim) + ((start.imag + end.imag) / 2),
+    )
 
-    # step 4
+    # Step 4: compute theta and delta_theta
     ux = (x1prim - cxprim) / rx
     uy = (y1prim - cyprim) / ry
     vx = (-x1prim - cxprim) / rx
     vy = (-y1prim - cyprim) / ry
-
-    # the angle between two vectors (1, 0) and ((x1'-cx')/rx, (y1'-c1y/ry))
-    p = ux
     n = sqrt(ux * ux + uy * uy)
-    # In certain cases the above calculation can through inaccuracies
-    # become just slightly out of range, f ex -1.0000000000000002.
-    d = p / n #np.clip(p / n, -1, 1)
-    theta = degrees(acos(d))
+    p = ux
+    theta = degrees(acos(p / n))
     if uy < 0:
         theta = -theta
+    theta = theta % 360
 
-    # the angle between two vectors ((x1'-cx')/rx, (y1'-c1y/ry)) and
-    # ((-x1'-cx')/rx, (-y1'-c1y/ry))
-    p = ux * vx + uy * vy
     n = sqrt((ux * ux + uy * uy) * (vx * vx + vy * vy))
+    p = ux * vx + uy * vy
+    d = p / n
     # In certain cases the above calculation can through inaccuracies
     # become just slightly out of range, f ex -1.0000000000000002.
-    d = np.clip(p / n, -1, 1)
+    d = np.clip(d, -1.0, 1.0)
+
     delta = degrees(acos(d))
-    delta %= 360
     if (ux * vy - uy * vx) < 0:
         delta = -delta
+    delta = delta % 360
+    if not sweep:
+        if delta > 0:
+            delta -= 360
 
-    # Make sure delta has the right sign given `sweep`
-    # such that -360 < delta < 360
-    if sweep and delta < 0:
-        delta += 360
-    if not sweep and delta > 0:
-        delta -= 360
+    return radius, center, theta, theta + delta
 
-    return center, theta, theta + delta
+
+def arc_path(start, radius, rotation, large, sweep, end):
+    """
+    Generate an elliptical arc path given an endpoint parameterization.
+
+    Uses matplotlib to draw the arc using quadratic Bezier curves.
+
+    Parameters
+    ----------
+    start : complex
+        Starting point (x1, y1).
+    radius : complex
+        Two elliptical radii (rx, ry).
+    rotation : float
+        Angle from the x-axis of the current coordinate system to the x-axis of
+        the ellipse.
+    large : bool
+        False if an arc spanning < 180 degrees is to be drawn, True if an arc
+        spanning >= 180 degrees is to be drawn.
+    sweep : bool
+        If sweep-flag is True, then the arc will be drawn in a "positive-angle"
+        direction from start to end.
+    end : complex
+        End point (x2, y2).
+
+    Returns
+    -------
+    codes : array (n,)
+        Command codes
+    verts : array (n,2)
+        Vertices
+
+    Notes
+    -----
+    We first perform a conversion to center parameterization and generate
+    a circular arc at the origin. Then we apply scaling, translation and
+    rotation.
+
+    One can think of an ellipse as a circle that has been stretched and then
+    rotated. Start by making an arc along the unit circle from `theta1` to
+    `theta2`, centered at `center`. Then scale the circle along the x and y axes
+    according to the given radii. Finally, rotate the arc around the center
+    through the given angle `rotation`.
+
+    """
+    radius, center, theta1, theta2 = endpoint_to_center(
+        start,
+        radius,
+        rotation,
+        large,
+        sweep,
+        end
+    )
+
+    # Create an arc on the unit circle
+    # Matplotlib does this using CURVE4 operations
+    # https://matplotlib.org/stable/_modules/matplotlib/path.html#Path.arc
+    if theta2 > theta1:
+        arc = Path.arc(theta1=theta1, theta2=theta2)
+        reverse_path = False
+    else:
+        arc = Path.arc(theta1=theta2, theta2=theta1)
+        reverse_path = True
+
+    # Transform it into an elliptical arc:
+    # * scale the minor and major axes
+    # * translate it to the center
+    # * rotate the x-axis of the ellipse from the x-axis of the current
+    #   coordinate system
+    trans = (
+        transforms.Affine2D()
+        .scale(radius.real, radius.imag)
+        .translate(center.real, center.imag)
+        .rotate_deg_around(center.real, center.imag, rotation)
+    )
+    arc = trans.transform_path(arc)
+    codes = np.array(arc.codes)
+    verts = np.array(arc.vertices)
+
+    # Make sure we are drawing from start to end
+    if reverse_path:
+        verts = verts[::-1, :]
+
+    # Change the initial MOVETO operation into a LINETO to connect to the
+    # previous path
+    codes[0] = Path.LINETO
+
+    return codes, verts
 
 
 def _tokenize_path(pathdef):
@@ -379,44 +465,20 @@ def _parse_path(pathdef, current_pos):
             large = float(elements.pop())
             sweep = float(elements.pop())
             end = _next_pos(elements)
+
+            # This is equivalent of omitting the segment, so do nothing
+            if current_pos == end:
+                continue
+
             if not absolute:
                 end += current_pos
 
-            center, theta1, theta2 = endpoint_to_center(
-                current_pos,
-                radius,
-                rotation,
-                large,
-                sweep,
-                end
-            )
-
-            # Create an arc on the unit circle
-            if theta2 > theta1:
-                arc = Path.arc(theta1=theta1, theta2=theta2)
+            if radius.real == 0 or radius.imag == 0:
+                # This should be treated as a straight line
+                verts = [(end.real, end.imag)]
+                yield COMMAND_CODES['L'], verts
             else:
-                arc = Path.arc(theta1=theta2, theta2=theta1)
-
-            # Transform it into an elliptical arc:
-            # * scale the minor and major axes
-            # * translate it to the center
-            # * rotate the x-axis of the ellipse from the x-axis of the current
-            #   coordinate system
-            trans = (
-                transforms.Affine2D()
-                    .scale(radius.real, radius.imag)
-                    .translate(center.real, center.imag)
-                    .rotate_deg_around(center.real, center.imag, rotation)
-            )
-            arc = trans.transform_path(arc)
-
-            verts = np.array(arc.vertices)
-            codes = np.array(arc.codes)
-            if sweep:
-                # mysterious hack needed to render properly when sweeping the
-                # arc angle in the "positive" angular direction
-                yield codes[1:], verts[1:, :]
-            else:
+                codes, verts = arc_path(current_pos, radius, rotation, large, sweep, end)
                 yield codes, verts
 
             current_pos = end
