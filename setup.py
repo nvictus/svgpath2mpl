@@ -8,7 +8,7 @@ from setuptools import setup
 
 
 classifiers =[
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering :: Visualization",
@@ -39,7 +39,7 @@ def get_long_description():
 
 
 install_requires = ['numpy', 'matplotlib']
-tests_require = ['nose']
+tests_require = ['pytest']
 
 setup(
     name='svgpath2mpl',
