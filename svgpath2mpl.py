@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 SVGPATH2MPL
 ~~~~~~~~~~~
@@ -27,33 +26,33 @@ __all__ = ['parse_path']
 COMMANDS = set('MmZzLlHhVvCcSsQqTtAa')
 UPPERCASE = set('MZLHVCSQTA')
 
-COMMAND_RE = re.compile("([MmZzLlHhVvCcSsQqTtAa])")
-FLOAT_RE = re.compile("[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?")
+COMMAND_RE = re.compile(r"([MmZzLlHhVvCcSsQqTtAa])")
+FLOAT_RE = re.compile(r"[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?")
 
 COMMAND_CODES = {
-    'M' : (Path.MOVETO,),    # moveto
-    'L' : (Path.LINETO,),    # line
-    'H' : (Path.LINETO,),    # shorthand for horizontal line
-    'V' : (Path.LINETO,),    # shorthand for vertical line
-    'Q' : (Path.CURVE3,)*2,  # quadratic bezier
-    'T' : (Path.CURVE3,)*2,  # shorthand for smooth quadratic bezier
-    'C' : (Path.CURVE4,)*3,  # cubic bezier
-    'S' : (Path.CURVE4,)*3,  # shorthand for smooth cubic bezier
-    'Z' : (Path.CLOSEPOLY,), # closepath
-    'A' : None               # arc
+    'M': (Path.MOVETO,),    # moveto
+    'L': (Path.LINETO,),    # line
+    'H': (Path.LINETO,),    # shorthand for horizontal line
+    'V': (Path.LINETO,),    # shorthand for vertical line
+    'Q': (Path.CURVE3,)*2,  # quadratic bezier
+    'T': (Path.CURVE3,)*2,  # shorthand for smooth quadratic bezier
+    'C': (Path.CURVE4,)*3,  # cubic bezier
+    'S': (Path.CURVE4,)*3,  # shorthand for smooth cubic bezier
+    'Z': (Path.CLOSEPOLY,), # closepath
+    'A': None               # arc
 }
 
 PARAMS = {
-    'M' : 2, # moveto
-    'L' : 2, # line
-    'H' : 1, # shorthand for horizontal line
-    'V' : 1, # shorthand for vertical line
-    'Q' : 4, # quadratic bezier
-    'T' : 4, # shorthand for smooth quadratic bezier
-    'C' : 6, # cubic bezier
-    'S' : 6, # shorthand for smooth cubic bezier
-    'Z' : 0, # closepath
-    'A' : 7  # arc
+    'M': 2, # moveto
+    'L': 2, # line
+    'H': 1, # shorthand for horizontal line
+    'V': 1, # shorthand for vertical line
+    'Q': 4, # quadratic bezier
+    'T': 4, # shorthand for smooth quadratic bezier
+    'C': 6, # cubic bezier
+    'S': 6, # shorthand for smooth cubic bezier
+    'Z': 0, # closepath
+    'A': 7  # arc
 }
 
 
@@ -213,9 +212,9 @@ def arc_path(start, radius, rotation, large, sweep, end):
 
     One can think of an ellipse as a circle that has been stretched and then
     rotated. Start by making an arc along the unit circle from `theta1` to
-    `theta2`, centered at `center`. Then scale the circle along the x and y axes
-    according to the given radii. Finally, rotate the arc around the center
-    through the given angle `rotation`.
+    `theta2`, centered at `center`. Then scale the circle along the x and y
+    axes according to the given radii. Finally, rotate the arc around the
+    center through the given angle `rotation`.
 
     """
     radius, center, theta1, theta2 = endpoint_to_center(
@@ -304,9 +303,9 @@ def _parse_path(pathdef, current_pos):
             if command is None:
                 raise ValueError(
                     "Unallowed implicit command in {}, position {}".format(
-                    pathdef, len(pathdef.split()) - len(elements)))
+                        pathdef, len(pathdef.split()) - len(elements))
+                    )
             last_command = command  # Used by S and T
-
 
         # 2. Parse the current command
 
@@ -477,7 +476,9 @@ def _parse_path(pathdef, current_pos):
                 verts = [(end.real, end.imag)]
                 yield COMMAND_CODES['L'], verts
             else:
-                codes, verts = arc_path(current_pos, radius, rotation, large, sweep, end)
+                codes, verts = arc_path(
+                    current_pos, radius, rotation, large, sweep, end
+                )
                 yield codes, verts
 
             current_pos = end

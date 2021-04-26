@@ -7,7 +7,7 @@ import re
 from setuptools import setup
 
 
-classifiers =[
+classifiers = [
     "Development Status :: 5 - Production/Stable",
     "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
