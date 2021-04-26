@@ -3,6 +3,11 @@ svgpath2mpl
 
 .. image:: https://github.com/nvictus/svgpath2mpl/actions/workflows/python-test.yml/badge.svg
     :target: https://github.com/nvictus/svgpath2mpl/actions
+    :alt: Github Actions CI
+
+.. image:: https://badge.fury.io/py/svgpath2mpl.svg
+    :target: https://badge.fury.io/py/svgpath2mpl
+    :alt: PyPI version
 
 Parse SVG paths into matplotlib ``Path`` objects for plotting.
 
