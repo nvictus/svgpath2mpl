@@ -1,8 +1,8 @@
 svgpath2mpl
 ===========
 
-.. image:: https://travis-ci.org/nvictus/svgpath2mpl.svg?branch=master
-    :target: https://travis-ci.org/nvictus/svgpath2mpl
+.. image:: https://github.com/nvictus/svgpath2mpl/actions/workflows/python-test.yml/badge.svg
+    :target: https://github.com/nvictus/svgpath2mpl/actions
 
 Parse SVG paths into matplotlib ``Path`` objects for plotting.
 
