@@ -8,7 +8,7 @@ A path in SVG is defined by a 'path' element which contains a
 cubic and quadratic Béziers), arc and closepath instructions. See the SVG
 Path specification at <https://www.w3.org/TR/SVG/paths.html>.
 
-:copyright: (c) 2016-2021, Nezar Abdennur.
+:copyright: (c) 2016, Nezar Abdennur.
 :license: BSD.
 
 """
@@ -20,7 +20,7 @@ from matplotlib.path import Path
 import matplotlib.transforms as transforms
 import numpy as np
 
-__version__ = '0.2.2'
+__version__ = '0.3.0'
 __all__ = ['parse_path']
 
 
@@ -276,10 +276,10 @@ def _next_pos(elements):
 
 
 def _parse_path(pathdef, current_pos):
-    # In the SVG specs, initial movetos are absolute, even if
-    # specified as 'm'. This is the default behavior here as well.
-    # But if you pass in a current_pos variable, the initial moveto
-    # will be relative to that current_pos. This is useful.
+    # In the SVG specs, initial movetos are absolute, even if specified as 'm'.
+    # This is the default behavior here as well. But if you pass in a
+    # current_pos variable, the initial moveto will be relative to that
+    # current_pos. This is useful.
     elements = list(_tokenize_path(pathdef))
     # Reverse for easy use of .pop()
     elements.reverse()
@@ -466,14 +466,13 @@ def _parse_path(pathdef, current_pos):
             sweep = float(elements.pop())
             end = _next_pos(elements)
 
-            # This is equivalent of omitting the segment, so do nothing
-            if current_pos == end:
-                continue
-
             if not absolute:
                 end += current_pos
 
-            if radius.real == 0 or radius.imag == 0:
+            if current_pos == end:
+                # This is equivalent of omitting the segment, so do nothing
+                continue
+            elif radius.real == 0 or radius.imag == 0:
                 # This should be treated as a straight line
                 verts = [(end.real, end.imag)]
                 yield COMMAND_CODES['L'], verts
