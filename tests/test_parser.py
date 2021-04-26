@@ -10,7 +10,9 @@ def test_parse_path():
     stroke_width = 5
 
     path = parse_path(d)
-    patch = mpl.patches.PathPatch(path, facecolor=fill, edgecolor=stroke, linewidth=stroke_width)
+    patch = mpl.patches.PathPatch(
+        path, facecolor=fill, edgecolor=stroke, linewidth=stroke_width
+    )
 
     fig = plt.figure(figsize=(12, 5.25))
     ax = fig.add_subplot(111)
