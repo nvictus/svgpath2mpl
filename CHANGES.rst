@@ -1,6 +1,13 @@
 Changelog
 =========
 
+1.0.0 (2021-04-25)
+++++++++++++++++++
+
+- Stable release.
+- Fix issues with elliptical arc generation #9.
+- Add more visual tests (fontawesome SVGs).
+
 0.2.1 (2018-11-19)
 ++++++++++++++++++
 
